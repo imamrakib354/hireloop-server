@@ -29,6 +29,7 @@ const database = connectedClient.db("hireloopdb");
 const users = database.collection("user");
 const jobs = database.collection("jobs");
 const companies = database.collection("companies");
+const applications = database.collection("applications");
 
 app.get("/", (req, res) => {
   res.send("Hello World!");
@@ -41,44 +42,97 @@ app.get("/users", async (req, res) => {
 });
 
 // jobs related apis
+
 app.get("/jobs", async (req, res) => {
-  const query = {};
+  try {
+    const query = {};
 
-  // Job type: supports one or multiple selected checkboxes.
-  if (req.query.jobType) {
-    const types = Array.isArray(req.query.jobType)
-      ? req.query.jobType
-      : [req.query.jobType];
+    // 1. Category filter
+    if (req.query.category) {
+      query.category = req.query.category;
+    }
 
-    query.jobType = {
-      $in: types.filter((type) => typeof type === "string"),
-    };
+    // 2. Job type filter (supports multiple checkboxes)
+    if (req.query.jobType) {
+      const types = Array.isArray(req.query.jobType)
+        ? req.query.jobType
+        : [req.query.jobType];
+
+      query.jobType = { $in: types };
+    }
+
+    // 3. Remote filter
+    if (req.query.isRemote) {
+      query.isRemote = req.query.isRemote === "true";
+    }
+
+    // 4. Search filter
+    if (req.query.search) {
+      const search = String(req.query.search).replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { companyName: { $regex: search, $options: "i" } },
+        { location: { $regex: search, $options: "i" } },
+        { requirements: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // 5. Get matching jobs from MongoDB
+    let result = await jobs.find(query).toArray();
+
+    // 6. Minimum salary filter
+    if (req.query.minSalary) {
+      result = result.filter(
+        (job) => Number(job.minSalary) >= Number(req.query.minSalary),
+      );
+    }
+
+    // 7. Maximum salary filter
+    if (req.query.maxSalary) {
+      result = result.filter(
+        (job) => Number(job.maxSalary) <= Number(req.query.maxSalary),
+      );
+    }
+
+    // 8. Salary frequency filter
+    if (req.query.salaryFrequency) {
+      result = result.filter(
+        (job) =>
+          (job.salaryFrequency || job.frequency) === req.query.salaryFrequency,
+      );
+    }
+
+    // 9. Get all jobs for sidebar categories and counts
+    const allJobs = await jobs.find().toArray();
+
+    const categories = [
+      ...new Set(allJobs.map((job) => job.category).filter(Boolean)),
+    ].sort();
+
+    const jobTypeCounts = {};
+
+    allJobs.forEach((job) => {
+      if (job.jobType) {
+        jobTypeCounts[job.jobType] = (jobTypeCounts[job.jobType] || 0) + 1;
+      }
+    });
+
+    // 10. Send everything in one response
+    res.json({
+      jobs: result,
+      filterOptions: {
+        categories,
+        jobTypeCounts,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load jobs" });
   }
-
-  // Category.
-  if (typeof req.query.category === "string") {
-    query.category = req.query.category;
-  }
-
-  // Remote.
-  if (req.query.isRemote === "true" || req.query.isRemote === "false") {
-    query.isRemote = req.query.isRemote === "true";
-  }
-
-  // Search by title, company name, or location.
-  if (typeof req.query.search === "string") {
-    const search = req.query.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-    query.$or = [
-      { title: { $regex: search, $options: "i" } },
-      { companyName: { $regex: search, $options: "i" } },
-      { location: { $regex: search, $options: "i" } },
-      { requirements: { $regex: search, $options: "i" } },
-    ];
-  }
-
-  const result = await jobs.find(query).toArray();
-  res.send(result);
 });
 
 app.post("/jobs", async (req, res) => {
@@ -145,6 +199,25 @@ app.patch("/companies/:id", async (req, res) => {
   );
 
   res.json(result);
+});
+
+// application related apis
+app.get("/applications", async (req, res) => {
+  const query = {};
+
+  if (req.query.applicantId) {
+    query.userId = req.query.applicantId;
+  }
+
+  const cursor = applications.find(query);
+  const result = await cursor.toArray();
+  res.send(result);
+});
+
+app.post("/applications", async (req, res) => {
+  const application = req.body;
+  const result = await applications.insertOne(application);
+  res.send(result);
 });
 
 app.listen(port, () => {
