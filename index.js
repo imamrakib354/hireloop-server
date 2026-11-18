@@ -30,6 +30,7 @@ const users = database.collection("user");
 const jobs = database.collection("jobs");
 const companies = database.collection("companies");
 const applications = database.collection("applications");
+const bookmarks = database.collection("bookmarks");
 
 app.get("/", (req, res) => {
   res.send("Hello World!");
@@ -217,6 +218,39 @@ app.get("/applications", async (req, res) => {
 app.post("/applications", async (req, res) => {
   const application = req.body;
   const result = await applications.insertOne(application);
+  res.send(result);
+});
+
+
+ // bookmarks related apis
+
+// 1. Get bookmarks (optionally filter by userId)
+app.get("/bookmarks", async (req, res) => {
+  const query = {};
+
+  if (req.query.userId) {
+    query.userId = req.query.userId;
+  }
+
+  const result = await bookmarks.find(query).toArray();
+  res.send(result);
+});
+
+// 2. Add a bookmark
+app.post("/bookmarks", async (req, res) => {
+  const bookmark = req.body;
+  const result = await bookmarks.insertOne(bookmark);
+  res.send(result);
+});
+
+// 3. Remove a bookmark
+app.delete("/bookmarks/:id", async (req, res) => {
+  const id = req.params.id;
+
+  const result = await bookmarks.deleteOne({
+    _id: new ObjectId(id),
+  });
+
   res.send(result);
 });
 
