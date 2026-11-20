@@ -334,6 +334,10 @@ app.post('/payments/checkout-verify', async (req, res) => {
   res.send({ success: false, message: 'Payment verification failed' });
 })
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Server is running at http://localhost:${port}`);
+  });
+}
+
+export default app;
